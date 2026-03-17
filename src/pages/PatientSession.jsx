@@ -1,7 +1,7 @@
-import React from 'react'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
+import AICamera from '../components/AICamera'
 
 const WORD_LIST = ['cat','dog','ball','sun','red','cup','hat','fish','bird','tree','shoe','book','star','cake','frog','rain','blue','boat','milk','hand']
 const ANIMALS   = ['🐰','🐱','🐶','🦊','🐸','🐻','🐼','🦁']
@@ -15,13 +15,8 @@ export default function PatientSession() {
   const [toast, setToast] = useState(null)
   const [sessions, setSessions] = useState([])
 
-  // Camera / AI
-  const videoRef    = useRef(null)
-  const canvasRef   = useRef(null)
-  const streamRef   = useRef(null)
-  const aiTimerRef  = useRef(null)
-  const [camState, setCamState]   = useState('off') // off | live | sim
-  const [aiData, setAiData]       = useState({ eye:'Waiting...', move:'Waiting...', face:'Waiting...', voice:'Waiting...', eyePct:0, movePct:0, facePct:0, voicePct:0 })
+  // Camera / AI — handled by AICamera component
+  const [camState, setCamState] = useState('off')
 
   // Game scores stored for report
   const scoresRef = useRef({ bubble:0, animal:0, simon:0, color:0, sound:0, eye:0, move:0, face:0, voice:0, react:0 })
@@ -395,50 +390,20 @@ export default function PatientSession() {
                 </div>
               </div>
 
-              {/* Camera + AI */}
-              <div className="camera-section">
-                <div style={{flex:1,minWidth:280}}>
-                  <div style={{fontWeight:800,fontSize:'.88rem',color:'var(--muted)',textTransform:'uppercase',letterSpacing:.5,marginBottom:10}}>Live Camera Monitor</div>
-                  <div className="camera-feed">
-                    <video ref={videoRef} autoPlay muted playsInline style={{display:'none',width:'100%',height:'100%',objectFit:'cover'}}/>
-                    <canvas ref={canvasRef} width={480} height={360} style={{display:camState==='sim'?'block':'none',width:'100%',height:'100%'}}/>
-                    {camState==='off' && (
-                      <div className="camera-overlay">
-                        <div style={{fontSize:'2.5rem'}}>📷</div>
-                        <button className="btn btn-primary btn-sm" onClick={startCamera}>Enable Camera</button>
-                        <button className="btn btn-amber btn-sm" onClick={activateSim} style={{marginTop:4}}>▶ Use AI Simulation</button>
-                        <p style={{color:'rgba(255,255,255,.6)',fontSize:'.78rem',marginTop:4}}>Camera works on http://localhost (Live Server)</p>
-                      </div>
-                    )}
-                    <div className={`cam-status ${camState!=='off'?'cam-live':'cam-off'}`}>
-                      {camState==='live'?'● Live':camState==='sim'?'● Simulated':'● Off'}
-                    </div>
+              {/* AI Camera — real face detection, expressions, pose, emotion */}
+              <div style={{marginBottom:24}}>
+                <AICamera
+                  onScoresUpdate={scores => { scoresRef.current = { ...scoresRef.current, ...scores } }}
+                  onCamStateChange={state => {
+                    setCamState(state)
+                    if (state !== 'off') setStep(2)
+                  }}
+                />
+                {camState !== 'off' && (
+                  <div style={{marginTop:10}}>
+                    <button className="btn btn-sm btn-primary" onClick={()=>setStep(2)}>→ Proceed to Games</button>
                   </div>
-                  {camState !== 'off' && (
-                    <div style={{display:'flex',gap:8,marginTop:10}}>
-                      <button className="btn btn-sm" style={{background:'var(--teal)',color:'white',border:'none'}} onClick={()=>setStep(2)}>→ Proceed to Games</button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="ai-readings">
-                  <div style={{fontWeight:800,fontSize:'.88rem',color:'var(--muted)',textTransform:'uppercase',letterSpacing:.5}}>AI Readings</div>
-                  {[
-                    {icon:'👁',label:'Eye Contact',key:'eye',color:'var(--teal)'},
-                    {icon:'🧍',label:'Body Movement',key:'move',color:'var(--blue)'},
-                    {icon:'😊',label:'Facial Expression',key:'face',color:'var(--purple)'},
-                    {icon:'🔊',label:'Voice Response',key:'voice',color:'var(--amber)'},
-                  ].map(a=>(
-                    <div key={a.key} className="ai-card">
-                      <div className="ai-card-icon" style={{background:'var(--bg)'}}>{a.icon}</div>
-                      <div className="ai-card-info">
-                        <div className="ai-card-label">{a.label}</div>
-                        <div className="ai-card-value">{aiData[a.key]}</div>
-                        <div className="ai-bar-track"><div className="ai-bar-fill" style={{width:(aiData[a.key+'Pct']||0)+'%',background:a.color}}/></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                )}
               </div>
 
               {/* Games */}
