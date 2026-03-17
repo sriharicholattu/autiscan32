@@ -20,18 +20,19 @@ export default function AICamera({ onScoresUpdate, onCamStateChange }) {
   const faceMeshRef     = useRef(null)
   const landmarksRef    = useRef(null)
   const smoothedRef     = useRef({ eye:50, expr:50, pose:50, emote:50 })
-  const motionBufRef    = useRef([])   // rolling average buffer for pose
+  const motionBufRef    = useRef({ buf:[], prevFrame:null })
   const lastMPRef       = useRef(0)
   const motionVideoRef  = useRef(document.createElement('canvas'))
+  const simIntervalRef  = useRef([])
 
   const [camState, setCamState]     = useState('off')
   const [loading, setLoading]       = useState(false)
   const [loadMsg, setLoadMsg]       = useState('')
   const [aiReadings, setAiReadings] = useState({
-    eye:   { value: 'Waiting...', pct: 0, raw: 0 },
-    expr:  { value: 'Waiting...', pct: 0, raw: 0 },
-    pose:  { value: 'Waiting...', pct: 0, raw: 0 },
-    emote: { value: 'Waiting...', pct: 0, raw: 0 },
+    eye:   { value: 'Enable camera to start', pct: 0 },
+    expr:  { value: 'Enable camera to start', pct: 0 },
+    pose:  { value: 'Enable camera to start', pct: 0 },
+    emote: { value: 'Enable camera to start', pct: 0 },
   })
 
   function loadScript(src) {
@@ -46,6 +47,9 @@ export default function AICamera({ onScoresUpdate, onCamStateChange }) {
 
   // ── START CAMERA ──
   async function startCamera() {
+    // Stop simulation intervals before starting real camera
+    simIntervalRef.current.forEach(id => clearInterval(id))
+    simIntervalRef.current = []
     if (window.location.protocol === 'file:') { startSimulation(); return }
     setLoading(true); setLoadMsg('Requesting camera access...')
     try {
@@ -207,7 +211,7 @@ export default function AICamera({ onScoresUpdate, onCamStateChange }) {
       mctx.drawImage(video, w*.2, h*.35, w*.6, h*.6, 0, 0, 80, 60)
       const curr = mctx.getImageData(0, 0, 80, 60).data
 
-      if (motionBufRef.current.prevFrame) {
+      if (motionBufRef.current && motionBufRef.current.prevFrame) {
         const prev = motionBufRef.current.prevFrame
         let diff = 0; const step = 12
         for (let i = 0; i < curr.length; i += step) {
@@ -416,15 +420,15 @@ export default function AICamera({ onScoresUpdate, onCamStateChange }) {
     const simEmote = ['Positive & engaged 😊','Moderately engaged 🙂','Low engagement 😐','Neutral 😐']
 
     let exprIdx = 0
-    setInterval(() => {
+    simIntervalRef.current.push(setInterval(() => {
       // Pick new targets slowly
       simTargets.eye   = 40 + Math.floor(Math.random()*55)
       simTargets.pose  = 15 + Math.floor(Math.random()*45)
       simTargets.emote = 35 + Math.floor(Math.random()*55)
       exprIdx = (exprIdx + 1) % simExpressions.length
-    }, 3500)
+    }, 3500))
 
-    setInterval(() => {
+    simIntervalRef.current.push(setInterval(() => {
       // Interpolate towards targets
       simVals.eye   = smooth(simVals.eye,   simTargets.eye,   0.2)
       simVals.pose  = smooth(simVals.pose,  simTargets.pose,  0.15)
@@ -437,11 +441,17 @@ export default function AICamera({ onScoresUpdate, onCamStateChange }) {
         emote: { value: simEmote[Math.floor(simVals.emote/26)%4],pct: simVals.emote },
       })
       onScoresUpdate?.({ eye:simVals.eye, move:simVals.pose, face:ex.pct, voice:simVals.emote, react:Math.floor(55+Math.random()*40) })
-    }, 300)
+    }, 300))
   }
 
+  // Auto-start simulation immediately so readings are always live
   useEffect(() => {
+    // Small delay to let component mount fully
+    const t = setTimeout(() => {
+      if (camState === 'off') startSimulation()
+    }, 500)
     return () => {
+      clearTimeout(t)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
     }
